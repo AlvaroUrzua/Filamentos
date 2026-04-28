@@ -297,7 +297,25 @@ code { font-family: var(--font-mono); font-size: 0.88em; }
   flex: 1;
   height: 1px;
   background: var(--border);
+  order: 1;
 }
+.line-head-count {
+  order: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.line-head-count svg { width: 12px; height: 12px; }
 
 .swatch-grid {
   display: grid;

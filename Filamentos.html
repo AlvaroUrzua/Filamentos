@@ -1741,6 +1741,19 @@ function App() {
     return byFamily;
   }, [filtered]);
 
+  const spoolCountByLine = useMemo(() => {
+    const filamentById = new Map();
+    for (const f of data) filamentById.set(f.id, f);
+    const counts = new Map();
+    for (const sp of spools) {
+      const f = filamentById.get(sp.filamentId);
+      if (!f) continue;
+      const key = `${f.family}|${f.line}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [spools, data]);
+
   const stats = useMemo(() => {
     let ownedTypes = 0, rolls = 0, invested = 0;
     for (const f of data) {
@@ -1936,7 +1949,12 @@ function App() {
 
               {Array.from(lines.entries()).map(([lineName, items]) => (
                 <div key={lineName} className="line-group">
-                  <div className="line-head">{lineName}</div>
+                  <div className="line-head">
+                    <span>{lineName}</span>
+                    <span className="line-head-count" title="Carretes registrados">
+                      <Icon.Spool /> {spoolCountByLine.get(`${familyName}|${lineName}`) || 0}
+                    </span>
+                  </div>
                   <div className="swatch-grid">
                     {items.map((item) => {
                       const inv = inventory[item.id];
