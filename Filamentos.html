@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Filamentos · Inventario de filamento 3D</title>
+<link rel="icon" type="image/png" href="logo.png" />
+<link rel="apple-touch-icon" href="logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1219,14 +1221,19 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
 
       {spool.entries && spool.entries.length > 0 && (
         <div className="spool-entries">
-          {spool.entries.slice().reverse().map((e) => (
-            <div key={e.id} className="spool-entry">
-              <span className="spool-entry-date">{e.date}</span>
-              <span className="spool-entry-grams">-{formatG(e.grams)}</span>
-              <span className="spool-entry-note">{e.note || "—"}</span>
-              <button className="icon-btn" onClick={() => onRemoveEntry(spool.id, e.id)} title="Eliminar uso"><Icon.X /></button>
-            </div>
-          ))}
+          {spool.entries.slice().reverse().map((e) => {
+            const pricePerG = filament && filament.priceCLP ? filament.priceCLP / 1000 : 0;
+            const entryCost = pricePerG * (e.grams || 0);
+            return (
+              <div key={e.id} className="spool-entry">
+                <span className="spool-entry-date">{e.date}</span>
+                <span className="spool-entry-grams">-{formatG(e.grams)}</span>
+                <span className="spool-entry-cost" title="Costo del filamento usado">{pricePerG > 0 ? formatCLP(entryCost) : "—"}</span>
+                <span className="spool-entry-note">{e.note || "—"}</span>
+                <button className="icon-btn" onClick={() => onRemoveEntry(spool.id, e.id)} title="Eliminar uso"><Icon.X /></button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1755,7 +1762,7 @@ function App() {
     <div className={`app ${selected ? "app--detail-open" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark" />
+          <img className="brand-mark" src="logo.png" alt="Filamentos" />
           <div className="brand-name">
             Filamentos
             <span>Inventario 3D</span>
@@ -1828,6 +1835,10 @@ function App() {
             <div className="stat-label">Invertido</div>
             <div className="stat-value" style={{fontSize:16}}>{formatCLP(stats.invested)}</div>
           </div>
+        </div>
+
+        <div className="sidebar-credit">
+          Creado por <strong>Álvaro Urzúa Palominos</strong>
         </div>
       </aside>
 
