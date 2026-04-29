@@ -320,8 +320,8 @@ const AVAILABILITY = {
 };
 
 // ===== Swatch =====
-function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, selected = false }) {
-  const radiusByShape = { rounded: 10, square: 2, pill: size / 2, circle: "50%" };
+function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, selected = false, spoolStats = null }) {
+  const radiusByShape = { rounded: 10, square: 2, pill: size / 2, circle: "50%", spool: "50%" };
   const radius = radiusByShape[shape] ?? 10;
 
   const c1 = item.color;
@@ -371,6 +371,79 @@ function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, se
     return lum > 0.78;
   })();
 
+  const usedPct = spoolStats && spoolStats.totalInitial > 0
+    ? Math.min(100, Math.max(0, Math.round((spoolStats.totalUsed / spoolStats.totalInitial) * 100)))
+    : null;
+  const remainingPct = usedPct != null ? 100 - usedPct : null;
+
+  const isSpool = shape === "spool";
+  const titleSuffix = remainingPct != null ? ` · ${remainingPct}% restante` : "";
+
+  if (isSpool) {
+    const hubBg = isLight ? "rgba(20,22,28,0.85)" : "rgba(255,255,255,0.92)";
+    const hubFg = isLight ? "rgba(255,255,255,0.9)" : "rgba(20,22,28,0.85)";
+    const hubSize = Math.max(16, Math.round(size * 0.36));
+    const holeSize = Math.max(4, Math.round(size * 0.10));
+    const arcStroke = Math.max(3, Math.round(size * 0.09));
+    const arcR = 50 - arcStroke / 2;
+    const arcCirc = 2 * Math.PI * arcR;
+
+    return (
+      <button
+        className={`swatch swatch--spool ${selected ? "swatch--selected" : ""} ${owned ? "swatch--owned" : ""}`}
+        onClick={onClick}
+        style={{ width: size, height: size }}
+        title={`${item.family} ${item.line} · ${item.name}${item.code ? ` · #${item.code}` : ""}${titleSuffix}`}
+        aria-label={`${item.family} ${item.line} ${item.name}${item.code ? ` código ${item.code}` : ""}`}
+      >
+        <span
+          className="swatch-spool-disk"
+          style={{
+            background,
+            boxShadow: finish === "glow"
+              ? `inset 0 0 14px ${c1}, 0 0 0 1px ${isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.08)"}`
+              : `inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.18), 0 0 0 1px ${isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.06)"}`,
+          }}
+        />
+        {remainingPct != null && (
+          <svg className="swatch-spool-arc" viewBox="0 0 100 100" aria-hidden="true">
+            <circle
+              cx="50" cy="50" r={arcR}
+              fill="none"
+              stroke="rgba(0,0,0,0.28)"
+              strokeWidth={arcStroke}
+            />
+            <circle
+              cx="50" cy="50" r={arcR}
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth={arcStroke}
+              strokeLinecap="butt"
+              strokeDasharray={`${(remainingPct / 100) * arcCirc} ${arcCirc}`}
+              transform="rotate(-90 50 50)"
+            />
+          </svg>
+        )}
+        <span
+          className="swatch-spool-hub"
+          style={{ width: hubSize, height: hubSize, background: hubBg, color: hubFg }}
+        >
+          <span className="swatch-spool-hole" style={{ width: holeSize, height: holeSize, background: hubFg }} />
+        </span>
+        {remainingPct != null && (
+          <span className="swatch-spool-pct" aria-label={`${remainingPct}% restante`}>{remainingPct}%</span>
+        )}
+        {owned && (
+          <span className="swatch-check" aria-label="En mi inventario">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </span>
+        )}
+      </button>
+    );
+  }
+
   return (
     <button
       className={`swatch ${selected ? "swatch--selected" : ""} ${owned ? "swatch--owned" : ""}`}
@@ -384,7 +457,7 @@ function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, se
           ? `inset 0 0 14px ${c1}, 0 0 0 1px ${isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.08)"}`
           : `inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.12), 0 0 0 1px ${isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}`,
       }}
-      title={`${item.family} ${item.line} · ${item.name}${item.code ? ` · #${item.code}` : ""}`}
+      title={`${item.family} ${item.line} · ${item.name}${item.code ? ` · #${item.code}` : ""}${titleSuffix}`}
       aria-label={`${item.family} ${item.line} ${item.name}${item.code ? ` código ${item.code}` : ""}`}
     >
       {owned && (
@@ -393,6 +466,9 @@ function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, se
             <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </span>
+      )}
+      {usedPct != null && (
+        <span className="swatch-spool-pct" aria-label={`${usedPct}% usado`}>{usedPct}%</span>
       )}
     </button>
   );
@@ -637,7 +713,7 @@ function spoolRemaining(sp) {
 const TWEAK_DEFAULTS = {
   theme: "light",
   swatchSize: 64,
-  swatchShape: "rounded",
+  swatchShape: "spool",
   density: "cozy",
   showTweaks: false,
   familiesCollapsed: typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 720px)").matches,
@@ -684,7 +760,7 @@ function TweaksPanel({ tweaks, setTweaks, onExport, onImport }) {
       <div className="tweaks-group">
         <div className="tweaks-label">Forma del swatch</div>
         <div className="tweak-seg">
-          {[["rounded","Redondeado"],["square","Cuadrado"],["circle","Círculo"]].map(([v, l]) => (
+          {[["spool","Carrete"],["rounded","Redondeado"],["square","Cuadrado"],["circle","Círculo"]].map(([v, l]) => (
             <button key={v} className={tweaks.swatchShape === v ? "active" : ""} onClick={() => set("swatchShape", v)}>{l}</button>
           ))}
         </div>
@@ -1241,12 +1317,33 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
 }
 
 // ===== Spools view =====
+const SPOOL_SORT_KEY = "filamentos_spool_sort_v1";
+const SPOOL_SORT_OPTIONS = [
+  { value: "createdDesc", label: "Fecha agregado (más reciente)" },
+  { value: "createdAsc",  label: "Fecha agregado (más antiguo)" },
+  { value: "remainingDesc", label: "Restante (mayor)" },
+  { value: "remainingAsc",  label: "Restante (menor)" },
+  { value: "usedDesc", label: "Usado (mayor)" },
+  { value: "usedAsc",  label: "Usado (menor)" },
+  { value: "initialDesc", label: "Inicial (mayor)" },
+  { value: "initialAsc",  label: "Inicial (menor)" },
+  { value: "nameAsc",  label: "Filamento (A→Z)" },
+  { value: "nameDesc", label: "Filamento (Z→A)" },
+];
+
 function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }) {
   const filamentById = useMemo(() => {
     const m = new Map();
     for (const f of data) m.set(f.id, f);
     return m;
   }, [data]);
+
+  const [sortBy, setSortBy] = useState(() => {
+    try { return localStorage.getItem(SPOOL_SORT_KEY) || "createdDesc"; } catch (e) { return "createdDesc"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SPOOL_SORT_KEY, sortBy); } catch (e) {}
+  }, [sortBy]);
 
   const totals = useMemo(() => {
     let initial = 0, used = 0, remaining = 0;
@@ -1259,8 +1356,25 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
   }, [spools]);
 
   const sorted = useMemo(() => {
-    return spools.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  }, [spools]);
+    const arr = spools.slice();
+    const nameOf = (sp) => (filamentById.get(sp.filamentId)?.name || "").toLowerCase();
+    const cmpNum = (a, b) => (a || 0) - (b || 0);
+    const cmpStr = (a, b) => a.localeCompare(b);
+    switch (sortBy) {
+      case "createdAsc":    arr.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "")); break;
+      case "remainingDesc": arr.sort((a, b) => cmpNum(spoolRemaining(b), spoolRemaining(a))); break;
+      case "remainingAsc":  arr.sort((a, b) => cmpNum(spoolRemaining(a), spoolRemaining(b))); break;
+      case "usedDesc":      arr.sort((a, b) => cmpNum(spoolUsed(b), spoolUsed(a))); break;
+      case "usedAsc":       arr.sort((a, b) => cmpNum(spoolUsed(a), spoolUsed(b))); break;
+      case "initialDesc":   arr.sort((a, b) => cmpNum(b.initialG, a.initialG)); break;
+      case "initialAsc":    arr.sort((a, b) => cmpNum(a.initialG, b.initialG)); break;
+      case "nameAsc":       arr.sort((a, b) => cmpStr(nameOf(a), nameOf(b))); break;
+      case "nameDesc":      arr.sort((a, b) => cmpStr(nameOf(b), nameOf(a))); break;
+      case "createdDesc":
+      default:              arr.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")); break;
+    }
+    return arr;
+  }, [spools, sortBy, filamentById]);
 
   return (
     <>
@@ -1281,6 +1395,19 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
         </div>
       ) : (
         <div className="spool-list">
+          <div className="spool-sort-row">
+            <label className="spool-sort-label" htmlFor="spool-sort">Ordenar por</label>
+            <select
+              id="spool-sort"
+              className="form-select spool-sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              {SPOOL_SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           {sorted.map((sp) => (
             <SpoolCard
               key={sp.id}
@@ -1741,6 +1868,19 @@ function App() {
     return byFamily;
   }, [filtered]);
 
+  const spoolStatsByFilament = useMemo(() => {
+    const m = new Map();
+    for (const sp of spools) {
+      const cur = m.get(sp.filamentId) || { totalInitial: 0, totalUsed: 0, totalRemaining: 0, count: 0 };
+      cur.totalInitial += sp.initialG || 0;
+      cur.totalUsed += spoolUsed(sp);
+      cur.totalRemaining += spoolRemaining(sp);
+      cur.count += 1;
+      m.set(sp.filamentId, cur);
+    }
+    return m;
+  }, [spools]);
+
   const spoolCountByLine = useMemo(() => {
     const filamentById = new Map();
     for (const f of data) filamentById.set(f.id, f);
@@ -1967,6 +2107,7 @@ function App() {
                           owned={!!inv?.owned || (inv?.quantity || 0) > 0}
                           selected={selectedId === item.id}
                           onClick={() => setSelectedId(item.id)}
+                          spoolStats={spoolStatsByFilament.get(item.id) || null}
                         />
                       );
                     })}
