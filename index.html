@@ -486,6 +486,7 @@ const Icon = {
   Grid:   (p) => <svg {...p} width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.8" y="1.8" width="4" height="4" rx="0.6" stroke="currentColor" strokeWidth="1.3"/><rect x="8.2" y="1.8" width="4" height="4" rx="0.6" stroke="currentColor" strokeWidth="1.3"/><rect x="1.8" y="8.2" width="4" height="4" rx="0.6" stroke="currentColor" strokeWidth="1.3"/><rect x="8.2" y="8.2" width="4" height="4" rx="0.6" stroke="currentColor" strokeWidth="1.3"/></svg>,
   Trash:  (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 3.5H9.5M4.8 3.5V2.5C4.8 2 5.1 1.7 5.5 1.7H6.5C6.9 1.7 7.2 2 7.2 2.5V3.5M3.5 3.5L4 10.3C4 10.7 4.3 11 4.7 11H7.3C7.7 11 8 10.7 8 10.3L8.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
   Chevron:(p) => <svg {...p} width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 4L5 6L7 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  Grip:   (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="3" r="1" fill="currentColor"/><circle cx="8" cy="3" r="1" fill="currentColor"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="8" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="9" r="1" fill="currentColor"/><circle cx="8" cy="9" r="1" fill="currentColor"/></svg>,
 };
 
 // ===== Detail panel =====
@@ -759,7 +760,7 @@ function TweaksPanel({ tweaks, setTweaks, onExport, onImport }) {
 
       <div className="tweaks-group">
         <div className="tweaks-label">Forma del swatch</div>
-        <div className="tweak-seg">
+        <div className="tweak-seg tweak-seg--grid">
           {[["spool","Carrete"],["rounded","Redondeado"],["square","Cuadrado"],["circle","Círculo"]].map(([v, l]) => (
             <button key={v} className={tweaks.swatchShape === v ? "active" : ""} onClick={() => set("swatchShape", v)}>{l}</button>
           ))}
@@ -1230,10 +1231,29 @@ function NewSpoolModal({ data, initialFilamentId, onCreate, onClose }) {
 }
 
 // ===== Spool card =====
-function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
+const AMS_SLOTS = ["A1", "A2", "A3", "A4"];
+
+const SPOOL_ENTRIES_COLLAPSED_KEY = "filamentos_spool_entries_collapsed_v1";
+
+function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, dragHandleProps }) {
   const [grams, setGrams] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayISO());
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SPOOL_ENTRIES_COLLAPSED_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      return spool.id in map ? !!map[spool.id] : true;
+    } catch (e) { return true; }
+  });
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SPOOL_ENTRIES_COLLAPSED_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      map[spool.id] = !!collapsed;
+      localStorage.setItem(SPOOL_ENTRIES_COLLAPSED_KEY, JSON.stringify(map));
+    } catch (e) {}
+  }, [collapsed, spool.id]);
 
   const used = spoolUsed(spool);
   const remaining = spoolRemaining(spool);
@@ -1261,6 +1281,16 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
   return (
     <div className="spool-card">
       <div className="spool-card-head">
+        {dragHandleProps && (
+          <span
+            className="spool-drag-handle"
+            title="Arrastrar para reordenar"
+            aria-label="Arrastrar para reordenar"
+            {...dragHandleProps}
+          >
+            <Icon.Grip />
+          </span>
+        )}
         <div className="spool-card-swatch" style={{ background: swatchBg }} />
         <div className="spool-card-title">
           <div className="spool-card-name">
@@ -1271,6 +1301,19 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
             {filament ? `${filament.family} · ${filament.line}${filament.code ? ` · #${filament.code}` : ""}` : ""}
           </div>
         </div>
+        {onSetAmsSlot && (
+          <select
+            className={`spool-ams-select${spool.amsSlot ? " spool-ams-select--active" : ""}`}
+            value={spool.amsSlot || ""}
+            onChange={(e) => onSetAmsSlot(spool.id, e.target.value)}
+            title="Slot en AMS"
+          >
+            <option value="">AMS —</option>
+            {AMS_SLOTS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        )}
         <button className="icon-btn" onClick={() => onDelete(spool.id)} title="Eliminar carrete"><Icon.Trash /></button>
       </div>
 
@@ -1296,8 +1339,18 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
       </form>
 
       {spool.entries && spool.entries.length > 0 && (
-        <div className="spool-entries">
-          {spool.entries.slice().reverse().map((e) => {
+        <div className={`spool-entries${collapsed ? " spool-entries--collapsed" : ""}`}>
+          <button
+            type="button"
+            className="spool-entries-toggle"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Mostrar registros" : "Ocultar registros"}
+          >
+            <span className={`spool-entries-caret${collapsed ? "" : " spool-entries-caret--open"}`}>▸</span>
+            <span>Registros ({spool.entries.length})</span>
+          </button>
+          {!collapsed && spool.entries.slice().reverse().map((e) => {
             const pricePerG = filament && filament.priceCLP ? filament.priceCLP / 1000 : 0;
             const entryCost = pricePerG * (e.grams || 0);
             return (
@@ -1318,7 +1371,9 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete }) {
 
 // ===== Spools view =====
 const SPOOL_SORT_KEY = "filamentos_spool_sort_v1";
+const SPOOL_ORDER_KEY = "filamentos_spool_order_v1";
 const SPOOL_SORT_OPTIONS = [
+  { value: "manual", label: "Manual (arrastrar)" },
   { value: "createdDesc", label: "Fecha agregado (más reciente)" },
   { value: "createdAsc",  label: "Fecha agregado (más antiguo)" },
   { value: "remainingDesc", label: "Restante (mayor)" },
@@ -1331,7 +1386,9 @@ const SPOOL_SORT_OPTIONS = [
   { value: "nameDesc", label: "Filamento (Z→A)" },
 ];
 
-function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }) {
+const AMS_FILTER_KEY = "filamentos_spool_ams_filter_v1";
+
+function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, onNew }) {
   const filamentById = useMemo(() => {
     const m = new Map();
     for (const f of data) m.set(f.id, f);
@@ -1344,6 +1401,30 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
   useEffect(() => {
     try { localStorage.setItem(SPOOL_SORT_KEY, sortBy); } catch (e) {}
   }, [sortBy]);
+
+  const [manualOrder, setManualOrder] = useState(() => {
+    try { const raw = localStorage.getItem(SPOOL_ORDER_KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SPOOL_ORDER_KEY, JSON.stringify(manualOrder)); } catch (e) {}
+  }, [manualOrder]);
+
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+
+  const [amsFilter, setAmsFilter] = useState(() => {
+    try { return localStorage.getItem(AMS_FILTER_KEY) || "all"; } catch (e) { return "all"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(AMS_FILTER_KEY, amsFilter); } catch (e) {}
+  }, [amsFilter]);
+
+  const amsBySlot = useMemo(() => {
+    const m = new Map();
+    for (const sp of spools) if (sp.amsSlot) m.set(sp.amsSlot, sp);
+    return m;
+  }, [spools]);
+  const amsCount = amsBySlot.size;
 
   const totals = useMemo(() => {
     let initial = 0, used = 0, remaining = 0;
@@ -1361,6 +1442,16 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
     const cmpNum = (a, b) => (a || 0) - (b || 0);
     const cmpStr = (a, b) => a.localeCompare(b);
     switch (sortBy) {
+      case "manual": {
+        const idx = new Map(manualOrder.map((id, i) => [id, i]));
+        arr.sort((a, b) => {
+          const ai = idx.has(a.id) ? idx.get(a.id) : Number.MAX_SAFE_INTEGER;
+          const bi = idx.has(b.id) ? idx.get(b.id) : Number.MAX_SAFE_INTEGER;
+          if (ai !== bi) return ai - bi;
+          return (b.createdAt || "").localeCompare(a.createdAt || "");
+        });
+        break;
+      }
       case "createdAsc":    arr.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "")); break;
       case "remainingDesc": arr.sort((a, b) => cmpNum(spoolRemaining(b), spoolRemaining(a))); break;
       case "remainingAsc":  arr.sort((a, b) => cmpNum(spoolRemaining(a), spoolRemaining(b))); break;
@@ -1374,7 +1465,25 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
       default:              arr.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")); break;
     }
     return arr;
-  }, [spools, sortBy, filamentById]);
+  }, [spools, sortBy, filamentById, manualOrder]);
+
+  const visible = useMemo(() => {
+    if (amsFilter === "all") return sorted;
+    if (amsFilter === "ams") return sorted.filter((s) => !!s.amsSlot);
+    return sorted.filter((s) => s.amsSlot === amsFilter);
+  }, [sorted, amsFilter]);
+
+  const reorder = useCallback((fromId, toId) => {
+    if (!fromId || !toId || fromId === toId) return;
+    const ids = sorted.map((s) => s.id);
+    const fi = ids.indexOf(fromId);
+    const ti = ids.indexOf(toId);
+    if (fi < 0 || ti < 0) return;
+    const next = ids.slice();
+    const [m] = next.splice(fi, 1);
+    next.splice(ti, 0, m);
+    setManualOrder(next);
+  }, [sorted]);
 
   return (
     <>
@@ -1395,6 +1504,43 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
         </div>
       ) : (
         <div className="spool-list">
+          <div className="spool-ams-row">
+            <span className="spool-ams-label">AMS</span>
+            <button
+              type="button"
+              className={`chip${amsFilter === "all" ? " chip--active" : ""}`}
+              onClick={() => setAmsFilter("all")}
+            >Todos</button>
+            <button
+              type="button"
+              className={`chip${amsFilter === "ams" ? " chip--active" : ""}`}
+              onClick={() => setAmsFilter("ams")}
+              disabled={amsCount === 0}
+              title={amsCount === 0 ? "No hay carretes asignados al AMS" : ""}
+            >Solo AMS ({amsCount})</button>
+            {AMS_SLOTS.map((slot) => {
+              const sp = amsBySlot.get(slot);
+              const fil = sp ? filamentById.get(sp.filamentId) : null;
+              const swatch = fil
+                ? (fil.color2
+                    ? `linear-gradient(135deg, ${fil.color} 0%, ${fil.color} 48%, ${fil.color2} 52%, ${fil.color2} 100%)`
+                    : fil.color)
+                : "transparent";
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  className={`chip spool-ams-chip${amsFilter === slot ? " chip--active" : ""}${!sp ? " spool-ams-chip--empty" : ""}`}
+                  onClick={() => sp && setAmsFilter(slot)}
+                  disabled={!sp}
+                  title={sp && fil ? `${slot}: ${fil.name}` : `${slot}: vacío`}
+                >
+                  <span className="spool-ams-chip-dot" style={{ background: swatch }} />
+                  {slot}
+                </button>
+              );
+            })}
+          </div>
           <div className="spool-sort-row">
             <label className="spool-sort-label" htmlFor="spool-sort">Ordenar por</label>
             <select
@@ -1408,16 +1554,58 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onNew }
               ))}
             </select>
           </div>
-          {sorted.map((sp) => (
-            <SpoolCard
-              key={sp.id}
-              spool={sp}
-              filament={filamentById.get(sp.filamentId)}
-              onAddEntry={onAddEntry}
-              onRemoveEntry={onRemoveEntry}
-              onDelete={onDelete}
-            />
-          ))}
+          {visible.length === 0 ? (
+            <div className="empty">
+              <div className="empty-title">Sin carretes para este filtro</div>
+              <div>Asigna un slot AMS desde la tarjeta del carrete o cambia el filtro.</div>
+            </div>
+          ) : visible.map((sp) => {
+            const isManual = sortBy === "manual";
+            const wrapClass = "spool-card-wrap"
+              + (dragId === sp.id ? " is-dragging" : "")
+              + (dragOverId === sp.id && dragId && dragId !== sp.id ? " is-drop-target" : "");
+            const dragHandleProps = isManual ? {
+              draggable: true,
+              onDragStart: (e) => {
+                e.stopPropagation();
+                e.dataTransfer.effectAllowed = "move";
+                try { e.dataTransfer.setData("text/plain", sp.id); } catch (err) {}
+                setDragId(sp.id);
+              },
+              onDragEnd: () => { setDragId(null); setDragOverId(null); },
+            } : null;
+            const wrapProps = isManual ? {
+              onDragOver: (e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverId !== sp.id) setDragOverId(sp.id);
+              },
+              onDragLeave: (e) => {
+                if (dragOverId === sp.id) setDragOverId(null);
+              },
+              onDrop: (e) => {
+                e.preventDefault();
+                const fromId = dragId || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+                reorder(fromId, sp.id);
+                setDragId(null);
+                setDragOverId(null);
+              },
+            } : {};
+            return (
+              <div key={sp.id} className={wrapClass} {...wrapProps}>
+                <SpoolCard
+                  spool={sp}
+                  filament={filamentById.get(sp.filamentId)}
+                  onAddEntry={onAddEntry}
+                  onRemoveEntry={onRemoveEntry}
+                  onDelete={onDelete}
+                  onSetAmsSlot={onSetAmsSlot}
+                  dragHandleProps={dragHandleProps}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </>
@@ -1756,6 +1944,16 @@ function App() {
     if (!window.confirm("¿Eliminar este carrete y todos sus registros?")) return;
     setSpoolsState((prev) => ({ ...prev, items: (prev.items || []).filter((s) => s.id !== spoolId) }));
   }, []);
+  const setSpoolAmsSlot = useCallback((spoolId, slot) => {
+    setSpoolsState((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((s) => {
+        if (s.id === spoolId) return { ...s, amsSlot: slot || "" };
+        if (slot && s.amsSlot === slot) return { ...s, amsSlot: "" };
+        return s;
+      }),
+    }));
+  }, []);
 
   const data = useMemo(
     () => [...window.FILAMENT_DATA, ...(customs.items || [])],
@@ -2068,6 +2266,7 @@ function App() {
             onAddEntry={addSpoolEntry}
             onRemoveEntry={removeSpoolEntry}
             onDelete={deleteSpool}
+            onSetAmsSlot={setSpoolAmsSlot}
             onNew={() => { setNewSpoolFilamentId(""); setShowNewSpool(true); }}
           />
         ) : filtered.length === 0 ? (
