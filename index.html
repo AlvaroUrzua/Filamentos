@@ -379,14 +379,43 @@ function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, se
   const isSpool = shape === "spool";
   const titleSuffix = remainingPct != null ? ` · ${remainingPct}% restante` : "";
 
+  const uid = React.useId();
+
   if (isSpool) {
-    const hubBg = isLight ? "rgba(20,22,28,0.85)" : "rgba(255,255,255,0.92)";
-    const hubFg = isLight ? "rgba(255,255,255,0.9)" : "rgba(20,22,28,0.85)";
-    const hubSize = Math.max(16, Math.round(size * 0.36));
-    const holeSize = Math.max(4, Math.round(size * 0.10));
-    const arcStroke = Math.max(3, Math.round(size * 0.09));
-    const arcR = 50 - arcStroke / 2;
-    const arcCirc = 2 * Math.PI * arcR;
+    // Side-view spool (axis horizontal): right flange visible as a tall ellipse
+    // (perspective: short radius along the axis), wound-filament cylinder
+    // extends to the left between the two flanges.
+    const cy = 50;
+    const flangeRX = 11;       // flange depth (squashed by perspective)
+    const flangeRY = 35;       // flange height
+    const rFcx = 70;           // right (front) flange center
+    const lFcx = 30;           // left (back) flange center
+    const cylLen = rFcx - lFcx;
+
+    // Hub on the right flange (also squashed)
+    const hubRX = 4;
+    const hubRY = 13;
+    const axleRX = 1.9;
+    const axleRY = 5.8;
+
+    // Wound filament radius — shrinks as the spool empties
+    const fillFrac = remainingPct != null ? remainingPct / 100 : 1;
+    const minFilRY = hubRY + 1.5;
+    const maxFilRY = flangeRY - 3;
+    const filRY = minFilRY + (maxFilRY - minFilRY) * fillFrac;
+    const filTop = cy - filRY;
+    const filBot = cy + filRY;
+
+    const flangeId    = `flange-${uid}`;
+    const filamentId  = `fil-${uid}`;
+    const sideId      = `side-${uid}`;
+    const hubGradId   = `hub-${uid}`;
+    const wrapShineId = `wrap-${uid}`;
+    const wrapHatchId = `hatch-${uid}`;
+
+    const sealedCount = spoolStats?.sealedCount || 0;
+    const allSealed   = sealedCount > 0 && sealedCount === spoolStats?.count;
+    const anySealed   = sealedCount > 0;
 
     return (
       <button
@@ -396,40 +425,138 @@ function Swatch({ item, size = 64, shape = "rounded", owned = false, onClick, se
         title={`${item.family} ${item.line} · ${item.name}${item.code ? ` · #${item.code}` : ""}${titleSuffix}`}
         aria-label={`${item.family} ${item.line} ${item.name}${item.code ? ` código ${item.code}` : ""}`}
       >
-        <span
-          className="swatch-spool-disk"
-          style={{
-            background,
-            boxShadow: finish === "glow"
-              ? `inset 0 0 14px ${c1}, 0 0 0 1px ${isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.08)"}`
-              : `inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.18), 0 0 0 1px ${isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.06)"}`,
-          }}
-        />
-        {remainingPct != null && (
-          <svg className="swatch-spool-arc" viewBox="0 0 100 100" aria-hidden="true">
-            <circle
-              cx="50" cy="50" r={arcR}
-              fill="none"
-              stroke="rgba(0,0,0,0.28)"
-              strokeWidth={arcStroke}
-            />
-            <circle
-              cx="50" cy="50" r={arcR}
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth={arcStroke}
-              strokeLinecap="butt"
-              strokeDasharray={`${(remainingPct / 100) * arcCirc} ${arcCirc}`}
-              transform="rotate(-90 50 50)"
-            />
-          </svg>
+        <svg className="swatch-spool-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <defs>
+            {/* Wound filament cylinder shading (light top → dark bottom) */}
+            <linearGradient id={sideId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stopColor={`color-mix(in oklab, ${c1} 100%, white 18%)`} />
+              <stop offset="38%" stopColor={c1} />
+              <stop offset="100%" stopColor={`color-mix(in oklab, ${c1} 100%, black 42%)`} />
+            </linearGradient>
+            {/* Vignette darken at the cylinder ends (near the flanges) */}
+            <linearGradient id={filamentId} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"  stopColor="rgba(0,0,0,0.32)" />
+              <stop offset="14%" stopColor="rgba(0,0,0,0)" />
+              <stop offset="86%" stopColor="rgba(0,0,0,0)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0.32)" />
+            </linearGradient>
+            {/* Flange plastic — light gray, lit from upper-left */}
+            <radialGradient id={flangeId} cx="32%" cy="22%" r="90%">
+              <stop offset="0%"  stopColor="#eef0f3" />
+              <stop offset="55%" stopColor="#c4c8ce" />
+              <stop offset="100%" stopColor="#8a8e95" />
+            </radialGradient>
+            {/* Hub recess (slightly darker than flange) */}
+            <radialGradient id={hubGradId} cx="40%" cy="30%" r="80%">
+              <stop offset="0%"  stopColor="#9a9ea5" />
+              <stop offset="100%" stopColor="#5e6168" />
+            </radialGradient>
+          </defs>
+
+          {/* Soft contact shadow under the spool */}
+          <ellipse cx="50" cy={cy + flangeRY + 3} rx="38" ry="2.4" fill="rgba(0,0,0,0.22)" />
+
+          {/* 1. Left/back flange — only its top & bottom edges peek above/below the cylinder */}
+          <ellipse cx={lFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill={`url(#${flangeId})`} />
+          <ellipse cx={lFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill="none" stroke="rgba(40,44,52,0.55)" strokeWidth="0.5" />
+
+          {/* 2. Wound filament cylinder body (rectangle between the two flanges) */}
+          <rect x={lFcx} y={filTop} width={cylLen} height={filBot - filTop} fill={`url(#${sideId})`} />
+
+          {/* 3. Striations: many fine horizontal lines to suggest wound strands */}
+          <g stroke="rgba(0,0,0,0.32)" strokeWidth="0.22" fill="none">
+            {Array.from({ length: 26 }).map((_, i) => {
+              const t = (i + 0.5) / 26;
+              const y = filTop + t * (filBot - filTop);
+              return <line key={i} x1={lFcx} y1={y} x2={rFcx} y2={y} />;
+            })}
+          </g>
+          {/* Subtle highlight strands near the top */}
+          <g stroke={`color-mix(in oklab, ${c1} 100%, white 45%)`} strokeWidth="0.28" fill="none" opacity="0.55">
+            {Array.from({ length: 5 }).map((_, i) => {
+              const y = filTop + (i + 1) * (filBot - filTop) * 0.045;
+              return <line key={i} x1={lFcx} y1={y} x2={rFcx} y2={y} />;
+            })}
+          </g>
+          {/* End vignette to suggest the cylinder curves back into the flanges */}
+          <rect x={lFcx} y={filTop} width={cylLen} height={filBot - filTop} fill={`url(#${filamentId})`} />
+          {/* Crisp top & bottom edge of the cylinder */}
+          <line x1={lFcx} y1={filTop} x2={rFcx} y2={filTop} stroke="rgba(0,0,0,0.45)" strokeWidth="0.4" />
+          <line x1={lFcx} y1={filBot} x2={rFcx} y2={filBot} stroke="rgba(0,0,0,0.55)" strokeWidth="0.5" />
+
+          {/* 4. Right/front flange — fully visible, perforated */}
+          <ellipse cx={rFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill={`url(#${flangeId})`} />
+          {/* perforation pattern: concentric dashed rings */}
+          <g fill="none" stroke="rgba(70,75,82,0.55)" strokeWidth="0.45" strokeDasharray="0.5 1.1">
+            {[0.93, 0.85, 0.77, 0.69, 0.61, 0.53, 0.45].map((r, i) => (
+              <ellipse key={i} cx={rFcx} cy={cy} rx={flangeRX * r} ry={flangeRY * r} />
+            ))}
+          </g>
+          {/* outer rim shadow */}
+          <ellipse cx={rFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill="none" stroke="rgba(40,44,52,0.7)" strokeWidth="0.55" />
+          {/* top highlight on the rim */}
+          <path
+            d={`M ${rFcx - flangeRX * 0.85} ${cy - flangeRY * 0.55} A ${flangeRX} ${flangeRY} 0 0 1 ${rFcx + flangeRX * 0.4} ${cy - flangeRY * 0.95}`}
+            fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.5"
+          />
+
+          {/* 5. Hub recess + axle hole on right flange */}
+          <ellipse cx={rFcx} cy={cy} rx={hubRX} ry={hubRY} fill={`url(#${hubGradId})`} />
+          <ellipse cx={rFcx} cy={cy} rx={hubRX} ry={hubRY} fill="none" stroke="rgba(0,0,0,0.45)" strokeWidth="0.45" />
+          <ellipse cx={rFcx} cy={cy} rx={axleRX} ry={axleRY} fill="#1f2228" />
+          <ellipse cx={rFcx} cy={cy} rx={axleRX} ry={axleRY} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth="0.4" />
+
+          {finish === "glow" && (
+            <rect x={lFcx} y={filTop} width={cylLen} height={filBot - filTop}
+                  fill="none" stroke={c1} strokeWidth="0.8" opacity="0.6" />
+          )}
+
+          {/* Sealed shrink-wrap film overlay (when all spools of this filament are sealed) */}
+          {allSealed && (
+            <>
+              <defs>
+                <linearGradient id={wrapShineId} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%"  stopColor="rgba(255,255,255,0.55)" />
+                  <stop offset="22%" stopColor="rgba(255,255,255,0)" />
+                  <stop offset="48%" stopColor="rgba(255,255,255,0)" />
+                  <stop offset="56%" stopColor="rgba(255,255,255,0.45)" />
+                  <stop offset="68%" stopColor="rgba(255,255,255,0)" />
+                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                </linearGradient>
+                <pattern id={wrapHatchId} patternUnits="userSpaceOnUse" width="3" height="3" patternTransform="rotate(45)">
+                  <line x1="0" y1="0" x2="0" y2="3" stroke="rgba(255,255,255,0.18)" strokeWidth="0.6" />
+                </pattern>
+              </defs>
+              {/* Film over the wound filament cylinder */}
+              <rect x={lFcx} y={filTop} width={cylLen} height={filBot - filTop} fill={`url(#${wrapHatchId})`} />
+              <rect x={lFcx} y={filTop} width={cylLen} height={filBot - filTop} fill={`url(#${wrapShineId})`} />
+              {/* Film over the right flange face */}
+              <ellipse cx={rFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill={`url(#${wrapHatchId})`} />
+              <ellipse cx={rFcx} cy={cy} rx={flangeRX} ry={flangeRY} fill={`url(#${wrapShineId})`} opacity="0.85" />
+              {/* Cool-tinted edge of the film */}
+              <ellipse cx={rFcx} cy={cy} rx={flangeRX + 0.4} ry={flangeRY + 0.4}
+                       fill="none" stroke="rgba(140,200,235,0.65)" strokeWidth="0.6" />
+              <line x1={lFcx} y1={filTop - 0.4} x2={rFcx} y2={filTop - 0.4} stroke="rgba(140,200,235,0.55)" strokeWidth="0.5" />
+              <line x1={lFcx} y1={filBot + 0.4} x2={rFcx} y2={filBot + 0.4} stroke="rgba(140,200,235,0.55)" strokeWidth="0.5" />
+              {/* "Pinch" creases at the cylinder ends, like sealed shrink wrap */}
+              <path d={`M ${lFcx} ${cy} L ${lFcx - 4} ${cy - 6} M ${lFcx} ${cy} L ${lFcx - 5} ${cy + 5} M ${lFcx} ${cy} L ${lFcx - 3} ${cy - 2}`}
+                    stroke="rgba(255,255,255,0.45)" strokeWidth="0.5" fill="none" strokeLinecap="round" />
+            </>
+          )}
+        </svg>
+
+        {/* Sealed sticker badge */}
+        {anySealed && (
+          <span className={`swatch-spool-seal${allSealed ? "" : " swatch-spool-seal--partial"}`}
+                title={allSealed ? "Carrete sellado" : `${sealedCount} de ${spoolStats.count} sellados`}
+                aria-label="sellado">
+            <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+              <rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+          </span>
         )}
-        <span
-          className="swatch-spool-hub"
-          style={{ width: hubSize, height: hubSize, background: hubBg, color: hubFg }}
-        >
-          <span className="swatch-spool-hole" style={{ width: holeSize, height: holeSize, background: hubFg }} />
-        </span>
+
         {remainingPct != null && (
           <span className="swatch-spool-pct" aria-label={`${remainingPct}% restante`}>{remainingPct}%</span>
         )}
@@ -487,13 +614,19 @@ const Icon = {
   Trash:  (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 3.5H9.5M4.8 3.5V2.5C4.8 2 5.1 1.7 5.5 1.7H6.5C6.9 1.7 7.2 2 7.2 2.5V3.5M3.5 3.5L4 10.3C4 10.7 4.3 11 4.7 11H7.3C7.7 11 8 10.7 8 10.3L8.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
   Chevron:(p) => <svg {...p} width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 4L5 6L7 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   Grip:   (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="3" r="1" fill="currentColor"/><circle cx="8" cy="3" r="1" fill="currentColor"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="8" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="9" r="1" fill="currentColor"/><circle cx="8" cy="9" r="1" fill="currentColor"/></svg>,
+  Lock:   (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="6" cy="8" r="0.7" fill="currentColor"/></svg>,
+  Unlock: (p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M4 5.5V4a2 2 0 0 1 3.7-1.05" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="6" cy="8" r="0.7" fill="currentColor"/></svg>,
+  Archive:(p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.7" y="2.2" width="8.6" height="2.4" rx="0.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2.6 4.6V9.5C2.6 9.9 2.9 10.2 3.3 10.2H8.7C9.1 10.2 9.4 9.9 9.4 9.5V4.6" stroke="currentColor" strokeWidth="1.2"/><path d="M4.8 6.6H7.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  Unarchive:(p) => <svg {...p} width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.7" y="2.2" width="8.6" height="2.4" rx="0.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2.6 4.6V9.5C2.6 9.9 2.9 10.2 3.3 10.2H8.7C9.1 10.2 9.4 9.9 9.4 9.5V4.6" stroke="currentColor" strokeWidth="1.2"/><path d="M6 9V6M4.4 7.4L6 5.8L7.6 7.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
 };
 
 // ===== Detail panel =====
-function DetailPanel({ item, inventory, onUpdate, onClose, spools = [], onCreateSpool, onOpenSpools }) {
+function DetailPanel({ item, inventory, onUpdate, onClose, spools = [], onCreateSpool, onOpenSpools, onSetArchived }) {
   if (!item) return null;
   const inv = inventory[item.id] || { owned: false, quantity: 0, customPrice: null, availability: "in-stock", notes: "" };
-  const mySpools = spools.filter((s) => s.filamentId === item.id);
+  const allMySpools = spools.filter((s) => s.filamentId === item.id);
+  const mySpools = allMySpools.filter((s) => !s.archived);
+  const archivedSpools = allMySpools.filter((s) => s.archived);
   const totalRemaining = mySpools.reduce((sum, s) => sum + spoolRemaining(s), 0);
 
   const setField = (field, value) => {
@@ -622,12 +755,22 @@ function DetailPanel({ item, inventory, onUpdate, onClose, spools = [], onCreate
                 const rem = spoolRemaining(sp);
                 const pct = sp.initialG > 0 ? (rem / sp.initialG) * 100 : 0;
                 return (
-                  <div key={sp.id} className="detail-spool-item" onClick={onOpenSpools} role="button" title="Ver en carretes">
-                    <div className="detail-spool-label">{sp.label || `${formatG(sp.initialG)} spool`}</div>
-                    <div className="spool-progress-bar" style={{ flex: 1 }}>
+                  <div key={sp.id} className="detail-spool-item">
+                    <div className="detail-spool-label" onClick={onOpenSpools} role="button" title="Ver en carretes" style={{ cursor: "pointer" }}>
+                      {sp.label || `${formatG(sp.initialG)} spool`}
+                    </div>
+                    <div className="spool-progress-bar" style={{ flex: 1 }} onClick={onOpenSpools} role="button" title="Ver en carretes">
                       <div className="spool-progress-fill" style={{ width: `${pct}%` }} />
                     </div>
                     <div className="detail-spool-rem">{formatG(rem)}</div>
+                    {onSetArchived && (
+                      <button
+                        className="icon-btn"
+                        onClick={(e) => { e.stopPropagation(); onSetArchived(sp.id, true); }}
+                        title="Archivar carrete"
+                        aria-label="Archivar carrete"
+                      ><Icon.Archive /></button>
+                    )}
                   </div>
                 );
               })}
@@ -637,6 +780,36 @@ function DetailPanel({ item, inventory, onUpdate, onClose, spools = [], onCreate
           <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => onCreateSpool && onCreateSpool(item.id)}>
             <Icon.Plus /> Nuevo carrete
           </button>
+          {archivedSpools.length > 0 && (
+            <div className="detail-spools-archived">
+              <div className="detail-spools-archived-title">
+                <Icon.Archive /> Archivados ({archivedSpools.length})
+              </div>
+              {archivedSpools.map((sp) => {
+                const rem = spoolRemaining(sp);
+                const pct = sp.initialG > 0 ? (rem / sp.initialG) * 100 : 0;
+                return (
+                  <div key={sp.id} className="detail-spool-item detail-spool-item--archived">
+                    <div className="detail-spool-label" onClick={onOpenSpools} role="button" title="Ver en carretes" style={{ cursor: "pointer" }}>
+                      {sp.label || `${formatG(sp.initialG)} spool`}
+                    </div>
+                    <div className="spool-progress-bar" style={{ flex: 1 }}>
+                      <div className="spool-progress-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="detail-spool-rem">{formatG(rem)}</div>
+                    {onSetArchived && (
+                      <button
+                        className="icon-btn"
+                        onClick={(e) => { e.stopPropagation(); onSetArchived(sp.id, false); }}
+                        title="Desarchivar carrete"
+                        aria-label="Desarchivar carrete"
+                      ><Icon.Unarchive /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="spec-grid">
@@ -1235,7 +1408,7 @@ const AMS_SLOTS = ["A1", "A2", "A3", "A4"];
 
 const SPOOL_ENTRIES_COLLAPSED_KEY = "filamentos_spool_entries_collapsed_v1";
 
-function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, dragHandleProps }) {
+function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, onSetSealed, onSetArchived, dragHandleProps }) {
   const [grams, setGrams] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -1277,9 +1450,11 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSet
   const color = filament?.color || "#888";
   const color2 = filament?.color2;
   const swatchBg = color2 ? `linear-gradient(135deg, ${color} 0%, ${color} 48%, ${color2} 52%, ${color2} 100%)` : color;
+  const sealed = !!spool.sealed;
+  const archived = !!spool.archived;
 
   return (
-    <div className="spool-card">
+    <div className={`spool-card${sealed ? " spool-card--sealed" : ""}${archived ? " spool-card--archived" : ""}`}>
       <div className="spool-card-head">
         {dragHandleProps && (
           <span
@@ -1291,28 +1466,61 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSet
             <Icon.Grip />
           </span>
         )}
-        <div className="spool-card-swatch" style={{ background: swatchBg }} />
+        <div className={`spool-card-swatch${sealed ? " spool-card-swatch--sealed" : ""}`} style={{ background: swatchBg }}>
+          {sealed && (
+            <span className="spool-seal-sticker" title="Carrete sellado">
+              <Icon.Lock />
+            </span>
+          )}
+        </div>
         <div className="spool-card-title">
           <div className="spool-card-name">
             {filament ? filament.name : "Filamento eliminado"}
             {spool.label && <span className="spool-card-label"> · {spool.label}</span>}
+            {sealed && <span className="spool-sealed-badge" title="Carrete sin abrir"><Icon.Lock /> SELLADO</span>}
+            {archived && <span className="spool-archived-badge" title="Carrete archivado"><Icon.Archive /> ARCHIVADO</span>}
           </div>
           <div className="spool-card-meta">
             {filament ? `${filament.family} · ${filament.line}${filament.code ? ` · #${filament.code}` : ""}` : ""}
           </div>
         </div>
-        {onSetAmsSlot && (
+        {onSetSealed && !archived && (
+          <button
+            type="button"
+            className={`spool-sealed-btn${sealed ? " spool-sealed-btn--on" : ""}`}
+            onClick={() => onSetSealed(spool.id, !sealed)}
+            title={sealed ? "Marcar como abierto" : "Marcar como sellado (sin abrir)"}
+            aria-pressed={sealed}
+          >
+            {sealed ? <Icon.Lock /> : <Icon.Unlock />}
+            <span>{sealed ? "Sellado" : "Sellar"}</span>
+          </button>
+        )}
+        {onSetAmsSlot && !archived && (
           <select
             className={`spool-ams-select${spool.amsSlot ? " spool-ams-select--active" : ""}`}
             value={spool.amsSlot || ""}
             onChange={(e) => onSetAmsSlot(spool.id, e.target.value)}
-            title="Slot en AMS"
+            title={sealed ? "Carrete sellado — abrelo para asignar slot" : "Slot en AMS"}
+            disabled={sealed}
           >
             <option value="">AMS —</option>
             {AMS_SLOTS.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+        )}
+        {onSetArchived && (
+          <button
+            type="button"
+            className={`spool-archive-btn${archived ? " spool-archive-btn--on" : ""}`}
+            onClick={() => onSetArchived(spool.id, !archived)}
+            title={archived ? "Desarchivar carrete" : "Archivar carrete"}
+            aria-pressed={archived}
+          >
+            {archived ? <Icon.Unarchive /> : <Icon.Archive />}
+            <span>{archived ? "Desarchivar" : "Archivar"}</span>
+          </button>
         )}
         <button className="icon-btn" onClick={() => onDelete(spool.id)} title="Eliminar carrete"><Icon.Trash /></button>
       </div>
@@ -1329,14 +1537,24 @@ function SpoolCard({ spool, filament, onAddEntry, onRemoveEntry, onDelete, onSet
         </div>
       </div>
 
-      <form className="spool-add" onSubmit={add}>
-        <input type="text" inputMode="decimal" className="form-input" placeholder="Gramos usados" value={grams} onChange={(e) => setGrams(e.target.value)} />
-        <input type="text" className="form-input" placeholder="Nota / proyecto (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
-        <input type="date" className="form-input spool-add-date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <button type="submit" className="btn btn-primary" disabled={!isFinite(parseGrams(grams)) || parseGrams(grams) <= 0}>
-          <Icon.Minus /> Registrar
-        </button>
-      </form>
+      {archived ? (
+        <div className="spool-sealed-note">
+          <Icon.Archive /> Carrete archivado — desarchivalo para registrar uso.
+        </div>
+      ) : sealed ? (
+        <div className="spool-sealed-note">
+          <Icon.Lock /> Carrete sellado — desellalo para registrar uso.
+        </div>
+      ) : (
+        <form className="spool-add" onSubmit={add}>
+          <input type="text" inputMode="decimal" className="form-input" placeholder="Gramos usados" value={grams} onChange={(e) => setGrams(e.target.value)} />
+          <input type="text" className="form-input" placeholder="Nota / proyecto (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <input type="date" className="form-input spool-add-date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <button type="submit" className="btn btn-primary" disabled={!isFinite(parseGrams(grams)) || parseGrams(grams) <= 0}>
+            <Icon.Minus /> Registrar
+          </button>
+        </form>
+      )}
 
       {spool.entries && spool.entries.length > 0 && (
         <div className={`spool-entries${collapsed ? " spool-entries--collapsed" : ""}`}>
@@ -1387,8 +1605,9 @@ const SPOOL_SORT_OPTIONS = [
 ];
 
 const AMS_FILTER_KEY = "filamentos_spool_ams_filter_v1";
+const ARCHIVE_FILTER_KEY = "filamentos_spool_archive_filter_v1";
 
-function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, onNew }) {
+function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAmsSlot, onSetSealed, onSetArchived, onNew }) {
   const filamentById = useMemo(() => {
     const m = new Map();
     for (const f of data) m.set(f.id, f);
@@ -1419,22 +1638,32 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAm
     try { localStorage.setItem(AMS_FILTER_KEY, amsFilter); } catch (e) {}
   }, [amsFilter]);
 
+  const [archiveFilter, setArchiveFilter] = useState(() => {
+    try { return localStorage.getItem(ARCHIVE_FILTER_KEY) || "active"; } catch (e) { return "active"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(ARCHIVE_FILTER_KEY, archiveFilter); } catch (e) {}
+  }, [archiveFilter]);
+
+  const archivedCount = useMemo(() => spools.filter((s) => s.archived).length, [spools]);
+  const activeSpools = useMemo(() => spools.filter((s) => !s.archived), [spools]);
+
   const amsBySlot = useMemo(() => {
     const m = new Map();
-    for (const sp of spools) if (sp.amsSlot) m.set(sp.amsSlot, sp);
+    for (const sp of activeSpools) if (sp.amsSlot) m.set(sp.amsSlot, sp);
     return m;
-  }, [spools]);
+  }, [activeSpools]);
   const amsCount = amsBySlot.size;
 
   const totals = useMemo(() => {
     let initial = 0, used = 0, remaining = 0;
-    for (const sp of spools) {
+    for (const sp of activeSpools) {
       initial += sp.initialG || 0;
       used += spoolUsed(sp);
       remaining += spoolRemaining(sp);
     }
     return { initial, used, remaining };
-  }, [spools]);
+  }, [activeSpools]);
 
   const sorted = useMemo(() => {
     const arr = spools.slice();
@@ -1468,10 +1697,13 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAm
   }, [spools, sortBy, filamentById, manualOrder]);
 
   const visible = useMemo(() => {
-    if (amsFilter === "all") return sorted;
-    if (amsFilter === "ams") return sorted.filter((s) => !!s.amsSlot);
-    return sorted.filter((s) => s.amsSlot === amsFilter);
-  }, [sorted, amsFilter]);
+    let arr = sorted;
+    if (archiveFilter === "active") arr = arr.filter((s) => !s.archived);
+    else if (archiveFilter === "archived") arr = arr.filter((s) => !!s.archived);
+    if (amsFilter === "all") return arr;
+    if (amsFilter === "ams") return arr.filter((s) => !!s.amsSlot);
+    return arr.filter((s) => s.amsSlot === amsFilter);
+  }, [sorted, amsFilter, archiveFilter]);
 
   const reorder = useCallback((fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -1488,7 +1720,7 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAm
   return (
     <>
       <div className="spool-totals">
-        <div className="spool-total"><div className="spool-total-label">Carretes</div><div className="spool-total-value">{spools.length}</div></div>
+        <div className="spool-total"><div className="spool-total-label">Carretes</div><div className="spool-total-value">{activeSpools.length}</div></div>
         <div className="spool-total"><div className="spool-total-label">Restante total</div><div className="spool-total-value">{formatG(totals.remaining)}</div></div>
         <div className="spool-total"><div className="spool-total-label">Usado total</div><div className="spool-total-value">{formatG(totals.used)}</div></div>
         <div className="spool-total"><div className="spool-total-label">Inicial total</div><div className="spool-total-value">{formatG(totals.initial)}</div></div>
@@ -1504,6 +1736,26 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAm
         </div>
       ) : (
         <div className="spool-list">
+          <div className="spool-ams-row">
+            <span className="spool-ams-label">Estado</span>
+            <button
+              type="button"
+              className={`chip${archiveFilter === "active" ? " chip--active" : ""}`}
+              onClick={() => setArchiveFilter("active")}
+            >Activos ({activeSpools.length})</button>
+            <button
+              type="button"
+              className={`chip${archiveFilter === "archived" ? " chip--active" : ""}`}
+              onClick={() => setArchiveFilter("archived")}
+              disabled={archivedCount === 0}
+              title={archivedCount === 0 ? "No hay carretes archivados" : ""}
+            ><Icon.Archive /> Archivados ({archivedCount})</button>
+            <button
+              type="button"
+              className={`chip${archiveFilter === "all" ? " chip--active" : ""}`}
+              onClick={() => setArchiveFilter("all")}
+            >Todos ({spools.length})</button>
+          </div>
           <div className="spool-ams-row">
             <span className="spool-ams-label">AMS</span>
             <button
@@ -1601,6 +1853,8 @@ function SpoolsView({ spools, data, onAddEntry, onRemoveEntry, onDelete, onSetAm
                   onRemoveEntry={onRemoveEntry}
                   onDelete={onDelete}
                   onSetAmsSlot={onSetAmsSlot}
+                  onSetSealed={onSetSealed}
+                  onSetArchived={onSetArchived}
                   dragHandleProps={dragHandleProps}
                 />
               </div>
@@ -1954,6 +2208,26 @@ function App() {
       }),
     }));
   }, []);
+  const setSpoolSealed = useCallback((spoolId, sealed) => {
+    setSpoolsState((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((s) => {
+        if (s.id !== spoolId) return s;
+        // a sealed spool can't be in an AMS slot
+        return { ...s, sealed: !!sealed, amsSlot: sealed ? "" : s.amsSlot };
+      }),
+    }));
+  }, []);
+  const setSpoolArchived = useCallback((spoolId, archived) => {
+    setSpoolsState((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((s) => {
+        if (s.id !== spoolId) return s;
+        // an archived spool can't occupy an AMS slot
+        return { ...s, archived: !!archived, amsSlot: archived ? "" : s.amsSlot };
+      }),
+    }));
+  }, []);
 
   const data = useMemo(
     () => [...window.FILAMENT_DATA, ...(customs.items || [])],
@@ -2069,11 +2343,13 @@ function App() {
   const spoolStatsByFilament = useMemo(() => {
     const m = new Map();
     for (const sp of spools) {
-      const cur = m.get(sp.filamentId) || { totalInitial: 0, totalUsed: 0, totalRemaining: 0, count: 0 };
+      if (sp.archived) continue;
+      const cur = m.get(sp.filamentId) || { totalInitial: 0, totalUsed: 0, totalRemaining: 0, count: 0, sealedCount: 0 };
       cur.totalInitial += sp.initialG || 0;
       cur.totalUsed += spoolUsed(sp);
       cur.totalRemaining += spoolRemaining(sp);
       cur.count += 1;
+      if (sp.sealed) cur.sealedCount += 1;
       m.set(sp.filamentId, cur);
     }
     return m;
@@ -2084,6 +2360,7 @@ function App() {
     for (const f of data) filamentById.set(f.id, f);
     const counts = new Map();
     for (const sp of spools) {
+      if (sp.archived) continue;
       const f = filamentById.get(sp.filamentId);
       if (!f) continue;
       const key = `${f.family}|${f.line}`;
@@ -2132,7 +2409,7 @@ function App() {
           onClick={() => setView("spools")}
         >
           <span><Icon.Spool /> &nbsp;Carretes</span>
-          <span className="nav-count">{spools.length}</span>
+          <span className="nav-count">{spools.filter((s) => !s.archived).length}</span>
         </button>
         <button
           className={`nav-item ${view === "calculator" ? "nav-item--active" : ""}`}
@@ -2267,6 +2544,8 @@ function App() {
             onRemoveEntry={removeSpoolEntry}
             onDelete={deleteSpool}
             onSetAmsSlot={setSpoolAmsSlot}
+            onSetSealed={setSpoolSealed}
+            onSetArchived={setSpoolArchived}
             onNew={() => { setNewSpoolFilamentId(""); setShowNewSpool(true); }}
           />
         ) : filtered.length === 0 ? (
@@ -2328,6 +2607,7 @@ function App() {
           spools={spools}
           onCreateSpool={(fid) => { setNewSpoolFilamentId(fid); setShowNewSpool(true); }}
           onOpenSpools={() => setView("spools")}
+          onSetArchived={setSpoolArchived}
         />
       )}
 
